@@ -42,6 +42,69 @@ def get_relevant_timestamps(query: str, yt: video_utils.YoutubeDL, video_path: s
     end_time = min(yt.length, MAX_VIDEO_LENGTH)
     return start_time, end_time
 
+def check_unique(video_id: str):    
+    import requests
+    URL = f"http://localhost:8000/api/v1/exists/{video_id}"
+    response = requests.get(URL)
+    return response.json().get("exists", False)
+
+def get_unique(results: List[video_utils.YoutubeResult]):
+    """
+    Check if the results are unique
+    """
+    final_result = []
+    for result in results:
+        if not check_unique(result.video_id):
+            continue
+        final_result.append(result)
+    return final_result
+
+def search_and_get_unique_videos(query: str, num_videos: int, limit=40) -> List[VideoMetadata]:
+    results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
+    return get_unique(results)
+
+import requests
+def get_embeddings(description: str, clip_path: str):
+    url = "http://localhost:8000/embed"
+    response = requests.post(url, json={"description": description, "path": clip_path})
+    return response.json()
+
+def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, video_metas: List[VideoMetadata], imagebind: ImageBind):
+    start = time.time()
+    download_path = video_utils.download_video(
+        result.video_id,
+        start=0,
+        end=min(result.length, FIVE_MINUTES),
+        
+    )
+    if download_path:
+        clip_path = None
+        try:
+            result.length = video_utils.get_video_duration(download_path.name)  # correct the length
+            bt.logging.info(f"Downloaded video {result.video_id} ({min(result.length, FIVE_MINUTES)}) in {time.time() - start} seconds")
+            start, end = get_relevant_timestamps(query, result, download_path)
+            description = get_description(result, download_path)
+            clip_path = video_utils.clip_video(download_path.name, start, end)
+            embeddings = 
+            embeddings = imagebind.embed([description], [clip_path])
+            video_metas.append(VideoMetadata(
+                video_id=result.video_id,
+                description=description,
+                views=result.views,
+                start_time=start,
+                end_time=end,
+                video_emb=embeddings.video[0].tolist(),
+                audio_emb=embeddings.audio[0].tolist(),
+                description_emb=embeddings.description[0].tolist(),
+            ))
+            return video_metas 
+        finally:
+            download_path.close()
+            if clip_path:
+                clip_path.close()
+    return None
+
+from concurrent.futures import ThreadPoolExecutor, Future
 
 def search_and_embed_videos(query: str, num_videos: int, imagebind: ImageBind) -> List[VideoMetadata]:
     """
@@ -55,43 +118,32 @@ def search_and_embed_videos(query: str, num_videos: int, imagebind: ImageBind) -
         List[VideoMetadata]: A list of VideoMetadata objects representing the search results.
     """
     # fetch more videos than we need
-    results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
+    # results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
+    results = search_and_get_unique_videos(query, int(num_videos * 20)) 
     video_metas = []
     try:
         # take the first N that we need
+        futures: List[Future] = []
+        executor = ThreadPoolExecutor(max_workers=32)
         for result in results:
-            start = time.time()
-            download_path = video_utils.download_video(
-                result.video_id,
-                start=0,
-                end=min(result.length, FIVE_MINUTES)  # download the first 5 minutes at most
-            )
-            if download_path:
-                clip_path = None
-                try:
-                    result.length = video_utils.get_video_duration(download_path.name)  # correct the length
-                    bt.logging.info(f"Downloaded video {result.video_id} ({min(result.length, FIVE_MINUTES)}) in {time.time() - start} seconds")
-                    start, end = get_relevant_timestamps(query, result, download_path)
-                    description = get_description(result, download_path)
-                    clip_path = video_utils.clip_video(download_path.name, start, end)
-                    embeddings = imagebind.embed([description], [clip_path])
-                    video_metas.append(VideoMetadata(
-                        video_id=result.video_id,
-                        description=description,
-                        views=result.views,
-                        start_time=start,
-                        end_time=end,
-                        video_emb=embeddings.video[0].tolist(),
-                        audio_emb=embeddings.audio[0].tolist(),
-                        description_emb=embeddings.description[0].tolist(),
-                    ))
-                finally:
-                    download_path.close()
-                    if clip_path:
-                        clip_path.close()
-            if len(video_metas) == num_videos:
+            future = executor.submit(download_and_embed_videos, result, query, video_metas, imagebind)
+            futures.append(future)
+        
+        # wait to get first num_videos results and cancel all pending futures
+        start = time.time()
+        for future  in futures:
+            if future.done():
+                result = future.result()
+                if result:
+                    video_metas = result
+                    if len(video_metas) == num_videos:
+                        break
+            if time.time() - start > 60:
                 break
-
+            
+        for future in futures:
+            future.cancel()
+        return results
     except Exception as e:
         bt.logging.error(f"Error searching for videos: {e}")
 
