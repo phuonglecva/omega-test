@@ -1,8 +1,16 @@
-# read parquet files
-import pandas as pd
-import pyarrow.parquet as pq
-filename = "youtube_ids.parquet"
-table = pq.read_table(filename)
-df = table.to_pandas()
-yt_ids = df['youtube_id'].tolist()
-print(len(yt_ids))
+from omega.video_utils import download_video
+
+texts = """"""
+texts = [text.split(":") for text in texts.split("\n")]
+PROXIES = [
+    f"http://{text[2]}:{text[3]}@{text[0]}:{text[1]}"
+    for text in texts
+]
+
+print(PROXIES)
+import time
+import random
+start = time.time()
+path = download_video("HtxlQVkqinc", 0, 300, random.choice(PROXIES))
+
+print(time.time() - start)
