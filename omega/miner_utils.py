@@ -85,17 +85,17 @@ def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, vid
             start, end = get_relevant_timestamps(query, result, download_path)
             description = get_description(result, download_path)
             clip_path = video_utils.clip_video(download_path.name, start, end)
-            embeddings = 
-            embeddings = imagebind.embed([description], [clip_path])
+            embeddings = get_embeddings(description, clip_path.name)
+            # embeddings = imagebind.embed([description], [clip_path])
             video_metas.append(VideoMetadata(
                 video_id=result.video_id,
                 description=description,
                 views=result.views,
                 start_time=start,
                 end_time=end,
-                video_emb=embeddings.video[0].tolist(),
-                audio_emb=embeddings.audio[0].tolist(),
-                description_emb=embeddings.description[0].tolist(),
+                video_emb=embeddings["video"][0].tolist(),
+                audio_emb=embeddings["audio"][0].tolist(),
+                description_emb=embeddings["description"][0].tolist(),
             ))
             return video_metas 
         finally:
@@ -106,7 +106,7 @@ def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, vid
 
 from concurrent.futures import ThreadPoolExecutor, Future
 
-def search_and_embed_videos(query: str, num_videos: int, imagebind: ImageBind) -> List[VideoMetadata]:
+def search_and_embed_videos(query: str, num_videos: int) -> List[VideoMetadata]:
     """
     Search YouTube for videos matching the given query and return a list of VideoMetadata objects.
 
@@ -126,7 +126,7 @@ def search_and_embed_videos(query: str, num_videos: int, imagebind: ImageBind) -
         futures: List[Future] = []
         executor = ThreadPoolExecutor(max_workers=32)
         for result in results:
-            future = executor.submit(download_and_embed_videos, result, query, video_metas, imagebind)
+            future = executor.submit(download_and_embed_videos, result, query, video_metas)
             futures.append(future)
         
         # wait to get first num_videos results and cancel all pending futures

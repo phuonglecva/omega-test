@@ -41,17 +41,18 @@ class Miner(BaseMinerNeuron):
     """
 
     def __init__(self, config=None):
-        super(Miner, self).__init__(config=config)
-        query_augment_type = QueryAugment(self.config.neuron.query_augment)
-        if query_augment_type == QueryAugment.NoAugment:
-            self.augment = NoAugment(device=self.config.neuron.device)
-        elif query_augment_type == QueryAugment.LocalLLMAugment:
-            self.augment = LocalLLMAugment(device=self.config.neuron.device)
-        elif query_augment_type == QueryAugment.OpenAIAugment:
-            self.augment = OpenAIAugment(device=self.config.neuron.device)
-        else:
-            raise ValueError("Invalid query augment")
-        self.imagebind = ImageBind()
+        # super(Miner, self).__init__(config=config)
+        # query_augment_type = QueryAugment(self.config.neuron.query_augment)
+        # if query_augment_type == QueryAugment.NoAugment:
+        #     self.augment = NoAugment(device=self.config.neuron.device)
+        # elif query_augment_type == QueryAugment.LocalLLMAugment:
+        #     self.augment = LocalLLMAugment(device=self.config.neuron.device)
+        # elif query_augment_type == QueryAugment.OpenAIAugment:
+        #     self.augment = OpenAIAugment(device=self.config.neuron.device)
+        # else:
+        #     raise ValueError("Invalid query augment")
+        # self.imagebind = ImageBind()
+        self.augment = OpenAIAugment(device=self.config.neuron.device)
 
     async def forward(
         self, synapse: omega.protocol.Videos
@@ -59,7 +60,7 @@ class Miner(BaseMinerNeuron):
         bt.logging.info(f"Received scraping request: {synapse.num_videos} videos for query '{synapse.query}'")
         start = time.time()
         synapse.video_metadata = search_and_embed_videos(
-            self.augment(synapse.query), synapse.num_videos, self.imagebind
+            self.augment(synapse.query), synapse.num_videos
         )
         time_elapsed = time.time() - start
         if len(synapse.video_metadata) == synapse.num_videos and time_elapsed < VALIDATOR_TIMEOUT:
