@@ -16,7 +16,9 @@ if os.getenv("OPENAI_API_KEY"):
 else:
     OPENAI_CLIENT = None
 
-
+PROXIES = [
+    "http://phsslfjr:d1ygi379i41l@84.33.200.103:6680"
+]
 def get_description(yt: video_utils.YoutubeDL, video_path: str) -> str:
     """
     Get / generate the description of a video from the YouTube API.
@@ -59,23 +61,24 @@ def get_unique(results: List[video_utils.YoutubeResult]):
         final_result.append(result)
     return final_result
 
-def search_and_get_unique_videos(query: str, num_videos: int, limit=40) -> List[VideoMetadata]:
+def search_and_get_unique_videos(query: str, num_videos: int) -> List[VideoMetadata]:
     results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
-    return get_unique(results)
+    # return get_unique(results)
+    return results
 
 import requests
 def get_embeddings(description: str, clip_path: str):
-    url = "http://localhost:8000/embed"
+    url = "http://localhost:8888/embed"
     response = requests.post(url, json={"description": description, "path": clip_path})
     return response.json()
 
-def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, video_metas: List[VideoMetadata], imagebind: ImageBind):
+def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, video_metas: List[VideoMetadata]):
     start = time.time()
     download_path = video_utils.download_video(
         result.video_id,
         start=0,
         end=min(result.length, FIVE_MINUTES),
-        
+        proxy=PROXIES[0]
     )
     if download_path:
         clip_path = None
@@ -119,12 +122,12 @@ def search_and_embed_videos(query: str, num_videos: int) -> List[VideoMetadata]:
     """
     # fetch more videos than we need
     # results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
-    results = search_and_get_unique_videos(query, int(num_videos * 20)) 
+    results = search_and_get_unique_videos(query, num_videos) 
     video_metas = []
     try:
         # take the first N that we need
         futures: List[Future] = []
-        executor = ThreadPoolExecutor(max_workers=32)
+        executor = ThreadPoolExecutor(max_workers=1)
         for result in results:
             future = executor.submit(download_and_embed_videos, result, query, video_metas)
             futures.append(future)

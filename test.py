@@ -1,16 +1,6 @@
-from omega.video_utils import download_video
+from omega.miner_utils import search_and_embed_videos
 
-texts = """"""
-texts = [text.split(":") for text in texts.split("\n")]
-PROXIES = [
-    f"http://{text[2]}:{text[3]}@{text[0]}:{text[1]}"
-    for text in texts
-]
 
-print(PROXIES)
-import time
-import random
-start = time.time()
-path = download_video("HtxlQVkqinc", 0, 300, random.choice(PROXIES))
-
-print(time.time() - start)
+query = "dog"
+num_videos = 1
+results = search_and_embed_videos(query=query, num_videos=num_videos)
