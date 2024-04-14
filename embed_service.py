@@ -20,7 +20,8 @@ class ImageEmbeddingService:
         self.imagebind = ImageBind()
 
     def get_embedding(self, description: str, path: str):
-        embs = self.imagebind.embed([description], [path])
+        with open(path, "rb") as f:
+            embs = self.imagebind.embed([description], [f])
         return {
             "video": embs.video.tolist(),
             "audio": embs.audio.tolist(),
@@ -34,7 +35,6 @@ class ImageEmbeddingService:
             "description": embs.description.tolist()
         }
 
-service = ImageEmbeddingService()
 
 
 @app.get("/")
@@ -43,7 +43,7 @@ def read_root():
 
 
 @app.post("/embed")
-def embed(request: EmbedRequest):
+async def embed(request: EmbedRequest):
     return service.get_embedding(request.description, request.path)
 
 
@@ -54,4 +54,6 @@ def embeds(request: EmbedsRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    service = ImageEmbeddingService()
+    
     uvicorn.run(app, host="0.0.0.0", port=8888)
