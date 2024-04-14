@@ -1,4 +1,5 @@
 import os
+import random
 import time
 from typing import List, Tuple
 
@@ -16,9 +17,10 @@ if os.getenv("OPENAI_API_KEY"):
 else:
     OPENAI_CLIENT = None
 
-PROXIES = [
-    "http://phsslfjr:d1ygi379i41l@84.33.200.103:6680"
-]
+with open("PROXIES.txt") as f:
+    proxies = f.readlines()
+PROXIES = [f"http://{proxy.strip()}" for proxy in proxies]
+
 def get_description(yt: video_utils.YoutubeDL, video_path: str) -> str:
     """
     Get / generate the description of a video from the YouTube API.
@@ -54,17 +56,24 @@ def get_unique(results: List[video_utils.YoutubeResult]):
     """
     Check if the results are unique
     """
-    final_result = []
-    for result in results:
-        if not check_unique(result.video_id):
-            continue
-        final_result.append(result)
-    return final_result
+    import requests
+    response = requests.post("http://localhost:8000/api/v1/unique", json={"ids": [result.video_id for result in results]})
+    unique_ids = response.json().get("unique_ids", [])
+    # return unique_ids if length greater or equal to 8, else get remain from the results
+    unique_results = [result for result in results if result.video_id in unique_ids]
+    if len(unique_results) >= 8:
+        return unique_results[:16]
+    
+    not_in_unique = [result for result in results if result.video_id not in unique_ids]
+    if len(not_in_unique) == 0:
+        return unique_results
+    
+    return unique_results + not_in_unique[:16 - len(unique_results)]
+        
 
 def search_and_get_unique_videos(query: str, num_videos: int) -> List[VideoMetadata]:
-    results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
-    # return get_unique(results)
-    return results
+    results = video_utils.search_videos(query, max_results=int(num_videos * 10))
+    return get_unique(results)
 
 import requests
 def get_embeddings(description: str, clip_path: str):
@@ -74,12 +83,17 @@ def get_embeddings(description: str, clip_path: str):
 
 def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, video_metas: List[VideoMetadata]):
     start = time.time()
-    download_path = video_utils.download_video(
-        result.video_id,
-        start=0,
-        end=min(result.length, FIVE_MINUTES),
-        proxy=PROXIES[0]
-    )
+    max_retries = 3
+    retries = 0
+    while retries < max_retries:
+        download_path = video_utils.download_video(
+            result.video_id,
+            start=0,
+            end=min(result.length, FIVE_MINUTES),
+            proxy=random.choice(PROXIES)
+        )
+        if download_path:
+            break
     if download_path:
         clip_path = None
         try:
@@ -127,7 +141,7 @@ def search_and_embed_videos(query: str, num_videos: int) -> List[VideoMetadata]:
     try:
         # take the first N that we need
         futures: List[Future] = []
-        executor = ThreadPoolExecutor(max_workers=1)
+        executor = ThreadPoolExecutor(max_workers=32)
         for result in results:
             future = executor.submit(download_and_embed_videos, result, query, video_metas)
             futures.append(future)
