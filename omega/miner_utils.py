@@ -73,6 +73,7 @@ def get_unique(results: List[video_utils.YoutubeResult]):
 
 def search_and_get_unique_videos(query: str, num_videos: int) -> List[VideoMetadata]:
     results = video_utils.search_videos(query, max_results=int(num_videos * 10))
+    print(f"Got {len(results)} results")
     return get_unique(results)
 
 import requests
@@ -84,7 +85,69 @@ def get_random_proxy():
     response = requests.get("http://localhost:8000/api/v1/proxies/random")
     return response.json().get("proxy", None)
 
-def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, video_metas: List[VideoMetadata]):
+
+def parallel_download_videos(results: List[video_utils.YoutubeResult], max_result: int = 8):
+    # parallel downdload videos from list of results and return list of video paths, if success reach 8 videos, return the list and cancel all pending downloads
+    executor = ThreadPoolExecutor(max_workers=10)
+    video_paths = {}
+    for result in results:
+        print(f"Downloading video {result.video_id}")
+        future = executor.submit(video_utils.download_video, result.video_id, start=0, end=min(result.length, FIVE_MINUTES), proxy=get_random_proxy())
+        video_paths[result.video_id] = future
+    start = time.time()
+    is_ok = False
+    final_result = {}
+    while True:
+        all_done = True
+        for video_id, future in video_paths.items():
+            if not future.done():
+                all_done = False
+                
+            if future.done():
+                path = future.result()
+                if path:
+                    final_result[video_id] = (result, path)
+                    if len(final_result.keys()) == max_result:
+                        is_ok = True
+                        break
+        if is_ok or all_done:
+            print(f"Done downloading videos in {time.time() - start} seconds")
+            break
+    print(f"Final result: {final_result}, Length: {len(final_result.keys())}")
+    return final_result
+
+def embedding_videos(result: video_utils.YoutubeResult, download_path: any):
+    start = time.time()
+    clip_path = None
+    print(f"Start embedding video {result.video_id}")
+    try:
+        result.length = video_utils.get_video_duration(download_path.name)  # correct the length
+        # bt.logging.info(f"Downloaded video {result.video_id} ({min(result.length, FIVE_MINUTES)}) in {time.time() - start} seconds")
+        start, end = get_relevant_timestamps(None, result, download_path)
+        description = get_description(result, download_path)
+        clip_path = video_utils.clip_video(download_path.name, start, end)
+        embeddings = get_embeddings(description, clip_path.name)
+        print(f"Done embedding video {result.video_id} in {time.time() - start} seconds")
+        return VideoMetadata(
+            video_id=result.video_id,
+            description=description,
+            views=result.views,
+            start_time=start,
+            end_time=end,
+            video_emb=embeddings["video"][0],
+            audio_emb=embeddings["audio"][0],
+            description_emb=embeddings["description"][0],
+        )
+    except Exception as e:
+        bt.logging.error(f"Error embedding video: {e}")
+        return None
+    finally:
+        download_path.close()
+        if clip_path:
+            clip_path.close()
+    
+
+def download_and_embed_videos(result: video_utils.YoutubeResult, query: str):
     start = time.time()
     max_retries = 3
     retries = 0
@@ -109,17 +172,16 @@ def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, vid
             clip_path = video_utils.clip_video(download_path.name, start, end)
             embeddings = get_embeddings(description, clip_path.name)
             # embeddings = imagebind.embed([description], [clip_path])
-            video_metas.append(VideoMetadata(
+            return VideoMetadata(
                 video_id=result.video_id,
                 description=description,
                 views=result.views,
                 start_time=start,
                 end_time=end,
-                video_emb=embeddings["video"][0].tolist(),
-                audio_emb=embeddings["audio"][0].tolist(),
-                description_emb=embeddings["description"][0].tolist(),
-            ))
-            return video_metas 
+                video_emb=embeddings["video"][0],
+                audio_emb=embeddings["audio"][0],
+                description_emb=embeddings["description"][0],
+            )
         finally:
             download_path.close()
             if clip_path:
@@ -143,30 +205,25 @@ def search_and_embed_videos(query: str, num_videos: int) -> List[VideoMetadata]:
     # results = video_utils.search_videos(query, max_results=int(num_videos * 1.5))
     results = search_and_get_unique_videos(query, num_videos) 
     video_metas = []
+    start = time.time()
+    executor = ThreadPoolExecutor(max_workers=4)
     try:
-        # take the first N that we need
-        futures: List[Future] = []
-        executor = ThreadPoolExecutor(max_workers=32)
-        for result in results:
-            future = executor.submit(download_and_embed_videos, result, query, video_metas)
-            futures.append(future)
-        
-        # wait to get first num_videos results and cancel all pending futures
-        start = time.time()
-        for future  in futures:
-            if future.done():
-                result = future.result()
-                if result:
-                    video_metas = result
-                    if len(video_metas) == num_videos:
-                        break
-            if time.time() - start > 60:
-                break
+        # download and embed videos in parallel
+        video_paths = parallel_download_videos(results)
+        embed_futures = []
+        for _, (result, path) in video_paths.items():
+            embed_futures.append(executor.submit(embedding_videos, result, path))
+        for future in embed_futures:
+            try:
+                video_meta = future.result()
+                if video_meta:
+                    video_metas.append(video_meta)
+            except Exception as e:
+                bt.logging.error(f"Error embedding video: {e}")
+                continue      
             
-        for future in futures:
-            future.cancel()
-        return results
     except Exception as e:
         bt.logging.error(f"Error searching for videos: {e}")
 
+    print(f"Done embedding {len(video_metas)} videos in {time.time() - start} seconds")   
     return video_metas

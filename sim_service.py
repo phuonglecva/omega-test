@@ -50,6 +50,7 @@ class YoutubeIdManger:
     def reload(self):
         self.download_ids()
         self.load_ids()
+        self.load_proxies()
         
     def check_exists(self, yt_id):
         return yt_id in self.ids
@@ -73,7 +74,7 @@ def reload_ids():
     import time
     print("Starting reload_ids")
     while True:
-        time.sleep(60 * 15)
+        time.sleep(60 * 5)
         manager.reload()
 
 reload_thread = threading.Thread(target=reload_ids)
