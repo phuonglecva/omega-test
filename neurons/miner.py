@@ -41,7 +41,7 @@ class Miner(BaseMinerNeuron):
     """
 
     def __init__(self, config=None):
-        # super(Miner, self).__init__(config=config)
+        super(Miner, self).__init__(config=config)
         # query_augment_type = QueryAugment(self.config.neuron.query_augment)
         # if query_augment_type == QueryAugment.NoAugment:
         #     self.augment = NoAugment(device=self.config.neuron.device)

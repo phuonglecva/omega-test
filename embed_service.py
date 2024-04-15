@@ -17,7 +17,8 @@ class EmbedsRequest(BaseModel):
 
 class ImageEmbeddingService:
     def __init__(self) -> None:
-        self.imagebind = ImageBind()
+        device = os.getenv("DEVICE", "cuda:0")
+        self.imagebind = ImageBind(device)
 
     def get_embedding(self, description: str, path: str):
         with open(path, "rb") as f:
@@ -57,4 +58,4 @@ if __name__ == "__main__":
     import os
     service = ImageEmbeddingService()
     
-    uvicorn.run(app, host="0.0.0.0", port=os.getenv("PORT", 8888))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8888)))

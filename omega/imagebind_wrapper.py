@@ -39,9 +39,10 @@ def run_async(func, *args, **kwargs):
 
 
 class ImageBind:
-    def __init__(self):
+    def __init__(self, device="cuda:0"):
+        import os
         # self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        self.device  = "cpu"
+        self.device = device
         self.imagebind = imagebind_model.imagebind_huge(pretrained=True)
         self.imagebind.eval()
         self.imagebind.to(self.device)

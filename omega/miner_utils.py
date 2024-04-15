@@ -80,17 +80,22 @@ def get_embeddings(description: str, clip_path: str):
     url = "http://localhost:8888/embed"
     response = requests.post(url, json={"description": description, "path": clip_path})
     return response.json()
+def get_random_proxy():
+    response = requests.get("http://localhost:8000/api/v1/proxies/random")
+    return response.json().get("proxy", None)
 
 def download_and_embed_videos(result: video_utils.YoutubeResult, query: str, video_metas: List[VideoMetadata]):
     start = time.time()
     max_retries = 3
     retries = 0
+    
     while retries < max_retries:
+        proxy = get_random_proxy()
         download_path = video_utils.download_video(
             result.video_id,
             start=0,
             end=min(result.length, FIVE_MINUTES),
-            proxy=random.choice(PROXIES)
+            proxy=proxy
         )
         if download_path:
             break

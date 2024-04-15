@@ -6,9 +6,28 @@ app = FastAPI()
 class YoutubeIdManger:
     def __init__(self) -> None:
         self.ids = set()
+        self.proxies = []
         if not os.path.exists("youtube_ids.parquet"):
             self.download_ids()
         self.load_ids()
+        self.load_proxies()
+    
+    def load_proxies(self):
+        import requests
+ 
+        response = requests.get(
+            "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page=1&page_size=100",
+            headers={"Authorization": ""}
+        )
+        
+        proxies = response.json()["results"]
+        self.proxies = [f"http://{proxy['proxy_address']}:{proxy['port']}" for proxy in proxies]
+
+        self.proxies = self.proxies
+        print(f"Loaded {len(self.proxies)} proxies", self.proxies[:5])
+    def get_random_proxy(self):
+        import random
+        return random.choice(self.proxies)
     
     def load_ids(self):
         filename = "youtube_ids.parquet"
@@ -73,6 +92,12 @@ def check_unique(yt_ids: YoutubeIdsRequest):
             "error": str(e),
             "unique_ids": yt_ids
         }
+
+@app.get("/api/v1/proxies/random")
+def get_random_proxy():
+    return {
+        "proxy": manager.get_random_proxy()
+    }
 
 @app.get("/api/v1/exists/{yt_id}")
 def check_unique(yt_id: str):

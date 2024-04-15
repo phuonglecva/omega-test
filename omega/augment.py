@@ -56,12 +56,14 @@ class LocalLLMAugment(AbstractAugment):
 
 class OpenAIAugment(AbstractAugment):
     def __init__(self, **kwargs):
-        self.client = OpenAI()
+        self.client = OpenAI(
+            api_key=""
+        )
         bt.logging.info("Running query augmentation with OpenAI GPT-4")
 
     def augment_query(self, query: str) -> str:
         response = self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+            model="gpt-3.5-turbo",
             messages=[
                 {
                     "role": "user",
